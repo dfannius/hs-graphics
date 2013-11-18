@@ -21,7 +21,7 @@ parseFingering :: String -> [(PC, Finger)]
 parseFingering s =
     map (\(i,c) -> (i, digitToInt c)) $ filter (\(i,c) -> c /= ' ') $ zip [0..] s
 
-fingerings = map parseFingering
+fingerings = map (parseFingering . cycle)
      ["1 2 31 2 3 4",
       "1 2 3 41 2 3",
       " 41 2 31 2 3",
@@ -36,7 +36,7 @@ fingerings = map parseFingering
       "1 2 31 2 34 "]
 
 drawFinger :: Double -> Double -> PC -> Int -> Finger -> C.Render ()
-drawFinger w h pc lineNo finger = do
+drawFinger xScale yScale pc lineNo finger = do
   C.save
 
   C.setOperator C.OperatorOver
@@ -46,7 +46,7 @@ drawFinger w h pc lineNo finger = do
 
   C.setSourceRGB 1 1 1
   C.selectFontFace "Arial" C.FontSlantNormal C.FontWeightBold
-  C.setFontSize (w / 25.0)
+  C.setFontSize (r * 1.2)
   C.setLineWidth 1.0
   (C.TextExtents txb tyb tw th txa tya) <- C.textExtents text
   C.moveTo (x - txa/2) (y + th/2)
@@ -55,22 +55,21 @@ drawFinger w h pc lineNo finger = do
 
   C.restore
       where (red,green,blue) = fingerColors !! (finger - 1)
-            keyWidth = w / 12.0
-            x = keyWidth * (0.5 + fromIntegral pc)
-            y = keyWidth * (0.5 + fromIntegral lineNo)
-            r = keyWidth * 0.4
+            x = xScale * (0.5 + fromIntegral pc)
+            y = yScale * (0.5 + fromIntegral lineNo)
+            r = minimum [xScale, yScale] * 0.4
             text = show finger
 
-drawScaleFingering :: Double -> Double -> Int -> [(PC, Finger)] -> C.Render()
-drawScaleFingering w h lineNo fs = do
+drawScaleFingering :: Int -> Double -> Double -> Int -> [(PC, Finger)] -> C.Render()
+drawScaleFingering numKeys xScale yScale lineNo fs = do
   C.save
-  forM_ fs $ \(pc, f) -> drawFinger w h pc lineNo f
+  forM_ fs $ \(pc, f) -> drawFinger xScale yScale pc lineNo f
   C.restore
     
 renderKey :: Double -> Double -> PC -> KeyColor -> C.Render ()
-renderKey w h idx color = do
+renderKey xScale h idx color = do
   C.save
-  C.rectangle ((fromIntegral idx) * (keyWidth w)) 0 (keyWidth w) h
+  C.rectangle ((fromIntegral idx) * xScale) 0 xScale h
   C.setFillRule C.FillRuleWinding
   case color of
     White -> C.stroke
@@ -80,16 +79,21 @@ renderKey w h idx color = do
 renderFingering :: Double -> Double -> C.Render ()
 renderFingering w h = do
   C.save
-  forM_ (zip [0..] keyColors) $ \(i, c) -> renderKey w h i c
-  drawFinger w h 0 0 1
-  forM_ (zip [0..] fingerings) $ \(i, f) -> drawScaleFingering w h i f
+  forM_ (take numKeys $ zip [0..] (cycle keyColors)) $
+            \(i, c) -> renderKey xScale h i c
+  forM_ (take numScales $ zip [0..] (cycle (map (take numKeys) fingerings))) $
+            \(i, f) -> drawScaleFingering numKeys xScale yScale i f
   C.restore
+    where numKeys = 24
+          numScales = 24
+          xScale  = w / (fromIntegral numKeys)
+          yScale  = h / (fromIntegral numKeys)
 
 main :: IO ()
 main = do
   C.withImageSurface C.FormatARGB32 width height $ \surf -> do
     C.renderWith surf $ renderFingering (fromIntegral width) (fromIntegral height)
     C.surfaceWriteToPNG surf "fingering.png"
-    where width  = 400
-          height = 400
+    where width  = 800
+          height = 800
 
